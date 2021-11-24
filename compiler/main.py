@@ -82,15 +82,13 @@ def genRegisters(signal_usages, number_of_patterns):
 ## Creates the AND logic to implement the pattern. This will get
 ## more complex when handling more the one byte per cycle as
 ## we then needs to find the pattern in all the offsets.
-def genAndGate(patterns,number_of_patterns):
-    if number_of_patterns != 1:
-        raise NotImplemented
+def genAndGate(patterns,number_of_bytes):
     result = ""
     for (pattern_number, pattern) in enumerate(patterns):
         signals_to_and = []
         for (index,char) in enumerate(pattern.strip()[::-1]):
-            if index == 0:
-                signals_to_and.append(f"decOut_internal({ord(char)})")
+            if index < number_of_bytes:
+                signals_to_and.append(f"decOut_internal({ord(char + 256*index)})")
             else:
                 signals_to_and.append(signalTemplate(char, index))
 
