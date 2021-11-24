@@ -39,22 +39,23 @@ def genSignals():
 ## Handles logic around the decoder(s), will get more complex when
 ## handling more the one byte per cycle
 def genDecoder(number_of_bytes):
-    if number_of_bytes == 1:
-        signals.append(("decOut_internal",256))
-        result ="""
-    decComp: genDecoder
-    port map(decIn => inComp,
-            clk => clk,
-            decOut => decOut_internal);
+    signals.append(("decOut_internal",256*number_of_bytes))
+    result =""
+    for i in range(number_of_bytes):
+        result += f"""
+decComp{i}: genDecoder
+port map(decIn => inComp({8*(i+1)-1} downto {8*i}),
+    clk => clk,
+    decOut => decOut_internal({256*(i+1)-1} downto {256*i}));
 """
-    else:
-        raise NotImplemented
     return result
 
 ## Genera vhdl for a single "network" register. Handles creation of
 ## output signal and mapping in input signal (include edge case
 ## where the previous component is the decoder)
-def genRegisters(signal_usages):
+def genRegisters(signal_usages, number_of_patterns):
+    if number_of_patterns != 1:
+        raise NotImplemented
     result = ""
     for signal in signal_usages:
         signal_depth = len(signal_usages[signal])
@@ -80,7 +81,9 @@ def genRegisters(signal_usages):
 ## Creates the AND logic to implement the pattern. This will get
 ## more complex when handling more the one byte per cycle as
 ## we then needs to find the pattern in all the offsets.
-def genAndGate(patterns):
+def genAndGate(patterns,number_of_patterns):
+    if number_of_patterns != 1:
+        raise NotImplemented
     result = ""
     for (pattern_number, pattern) in enumerate(patterns):
         signals_to_and = []
@@ -208,26 +211,44 @@ def parsePatterns(patterns):
 def main(argv):
     patterns=[]
     result = ""
+    if(sys.version[0] != "3" and int(sys.version[2:3]) >= 10):
+        print("This script usages python3.10 features, please make sure to run with complatible version of python")
+        exit()
+
+    if len(argv) < 4:
+        print(f"""Incorrect number of arguments
+Usage: python3.10 {__file__} <path to pattern file> <pattern to result file> <name of component> <number of bytes per cycle>""")
+        exit()
 
     # Gets data from file
     with open(argv[0]) as file:
         patterns = list(file)
     signal_usages = parsePatterns(patterns)
 
+    dist_path = argv[1]
+    name = argv[2]
+    number_of_bytes = int(argv[3])
+    if number_of_bytes != ceilToPow2(number_of_bytes):
+        print("The number of bytes per cycle needs to be a power of 2")
+        exit()
+
+
     # Must be run before genSignals as we only know what signals
     # we need after this stage is down
     signals.append(("patternOut", ceilToPow2(len(patterns))))
-    reg_gen_result =  genRegisters(signal_usages)
-    dec_gen_result = genDecoder(1)
-
-    result += initBlock("test_comp", len(patterns))
+    reg_gen_result =  genRegisters(signal_usages, number_of_bytes)
+    dec_gen_result = genDecoder(number_of_bytes)
+    #
+    result += initBlock(name, len(patterns))
     result += genSignals()
     result += "begin"
     result += dec_gen_result
     result += reg_gen_result
-    result += genAndGate(patterns)
-    result += genEndBlock("test_comp", len(patterns))
+    result += genAndGate(patterns, number_of_bytes)
+    result += genEndBlock(name, len(patterns))
 
-    print(result)
+    with open(dist_path,"w") as target_file:
+        target_file.write(result)
+
 if __name__ == "__main__":
     main(sys.argv[1:])
