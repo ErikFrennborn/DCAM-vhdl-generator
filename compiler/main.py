@@ -88,7 +88,7 @@ def genAndGate(patterns,number_of_bytes):
         signals_to_and = []
         for (index,char) in enumerate(pattern.strip()[::-1]):
             if index < number_of_bytes:
-                signals_to_and.append(f"decOut_internal({ord(char + 256*index)})")
+                signals_to_and.append(f"decOut_internal({ord(char) + 256*index})")
             else:
                 signals_to_and.append(signalTemplate(char, index))
 
