@@ -42,11 +42,12 @@ def genDecoder(number_of_bytes):
     signals.append(("decOut_internal",256*number_of_bytes))
     result =""
     for i in range(number_of_bytes):
+        inverse = number_of_bytes - i
         result += f"""
 decComp{i}: genDecoder
-port map(decIn => inComp({8*(i+1)-1} downto {8*i}),
+port map(decIn => inComp({8*(inverse)-1} downto {8*(inverse-1)}),
     clk => clk,
-    decOut => decOut_internal({256*(i+1)-1} downto {256*i}));
+    decOut => decOut_internal({256*(inverse)-1} downto {256*(inverse-1)}));
 """
     return result
 
@@ -215,9 +216,9 @@ def main(argv):
         print("This script usages python3.10 features, please make sure to run with complatible version of python")
         exit()
 
-    if len(argv) < 4:
+    if len(argv) < 3:
         print(f"""Incorrect number of arguments
-Usage: python3.10 {__file__} <path to pattern file> <pattern to result file> <name of component> <number of bytes per cycle>""")
+Usage: python3.10 {__file__} <path to pattern file> <name of component> <number of bytes per cycle>""")
         exit()
 
     # Gets data from file
@@ -225,9 +226,8 @@ Usage: python3.10 {__file__} <path to pattern file> <pattern to result file> <na
         patterns = list(file)
     signal_usages = parsePatterns(patterns)
 
-    dist_path = argv[1]
-    name = argv[2]
-    number_of_bytes = int(argv[3])
+    name = argv[1]
+    number_of_bytes = int(argv[2])
     if number_of_bytes != ceilToPow2(number_of_bytes):
         print("The number of bytes per cycle needs to be a power of 2")
         exit()
@@ -238,7 +238,7 @@ Usage: python3.10 {__file__} <path to pattern file> <pattern to result file> <na
     signals.append(("patternOut", ceilToPow2(len(patterns))))
     reg_gen_result =  genRegisters(signal_usages, number_of_bytes)
     dec_gen_result = genDecoder(number_of_bytes)
-    #
+
     result += initBlock(name, len(patterns))
     result += genSignals()
     result += "begin"
@@ -247,7 +247,7 @@ Usage: python3.10 {__file__} <path to pattern file> <pattern to result file> <na
     result += genAndGate(patterns, number_of_bytes)
     result += genEndBlock(name, len(patterns))
 
-    with open(dist_path,"w") as target_file:
+    with open(f"{name}.vhdl","w") as target_file:
         target_file.write(result)
 
 if __name__ == "__main__":
