@@ -148,7 +148,7 @@ def genEndBlock(name, number_of_patterns):
         case 0:
             patternOut_workaround = ""
         case 1:
-            patternOut_workaround = f"patternOut({number_of_patterns}) <= '1';"
+            patternOut_workaround = f"patternOut({number_of_patterns}) <= '0';"
         case _:
             patternOut_workaround = f'patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns -1}) <= "00";'
     result = f"""
