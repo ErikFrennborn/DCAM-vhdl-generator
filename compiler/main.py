@@ -54,28 +54,33 @@ port map(decIn => inComp({8*(inverse)-1} downto {8*(inverse-1)}),
 ## Genera vhdl for a single "network" register. Handles creation of
 ## output signal and mapping in input signal (include edge case
 ## where the previous component is the decoder)
-def genRegisters(signal_usages, number_of_patterns):
-    if number_of_patterns != 1:
-        raise NotImplemented
+def genRegisters(signal_usages, number_of_bytes):
+
     result = ""
     for signal in signal_usages:
-        signal_depth = len(signal_usages[signal])
-        for signal_level in range(signal_depth):
-            if signal_level == 0:
-                continue;
+        for offset in range(number_of_bytes):
+            signal_depth = len(signal_usages[signal])
+            for signal_level in range(signal_depth):
+                signal_level += offset
+                if signal_level < number_of_bytes:
+                    continue;
 
-            temp_reg = regNameTemplate(signal, signal_level)
-            temp_signal = signalTemplate(signal,signal_level)
-            signals.append((temp_signal,1))
+                temp_reg = regNameTemplate(signal, signal_level)
+                temp_signal = signalTemplate(signal,signal_level)
 
-            input_signal = f"decOut_internal({ord(signal)})"\
-                    if signal_level == 1\
-                    else signalTemplate(signal,signal_level-1)
-            result += f"""
+                if (temp_signal,1) in signals:
+                    continue
+
+                signals.append((temp_signal,1))
+
+                input_signal = f"decOut_internal({ord(signal)+256*(number_of_bytes-signal_level%number_of_bytes -1)})"\
+                        if signal_level < number_of_bytes*2 \
+                        else signalTemplate(signal,signal_level-number_of_bytes)
+                result += f"""
 {temp_reg}: genRegister
   port map(d => {input_signal},
            clk => clk,
-           q => {temp_signal});
+           q => {temp_signal});\n
 """
     return result
 
@@ -85,19 +90,31 @@ def genRegisters(signal_usages, number_of_patterns):
 def genAndGate(patterns,number_of_bytes):
     result = ""
     for (pattern_number, pattern) in enumerate(patterns):
-        signals_to_and = []
-        for (index,char) in enumerate(pattern.strip()[::-1]):
-            if index < number_of_bytes:
-                signals_to_and.append(f"decOut_internal({ord(char) + 256*index})")
-            else:
-                signals_to_and.append(signalTemplate(char, index))
+        pattern = pattern.strip()
+        if number_of_bytes != 1:
+            signals.append((f"{pattern}_and_signals",number_of_bytes))
+        for offset in range(number_of_bytes):
+            signals_to_and = []
+            for (index,char) in enumerate(pattern.strip()[::-1]):
+                index += offset
+                if index < number_of_bytes:
+                    signals_to_and.append(f"decOut_internal({ord(char) + 256*index})")
+                else:
+                    signals_to_and.append(signalTemplate(char, index))
 
-        result += f"patternOut({pattern_number}) <= " + " AND ".join(signals_to_and) + "\n"
+
+            partial_pattern = " AND ".join(signals_to_and)
+            if number_of_bytes == 1:
+                result += f"patternOut({pattern_number}) <= " +  partial_pattern + ";\n\n"
+            else:
+                result += f"{pattern}_and_signals({offset}) <= " + partial_pattern + ";\n"
+        if number_of_bytes != 1:
+            result += f"patternOut({pattern_number}) <= or_reduce({pattern}_and_signals);\n\n"
     return result
 
 ## Creates the initial block, mostly just defines.
 def initBlock(name, number_of_patterns):
-    result = f"""
+    result = f""" -- THIS FILE IS GENERATE MODIFY AT YOUR OWN RISK
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_misc.all;
@@ -135,6 +152,7 @@ component genRegister is
       q: out std_logic;
       clk: in std_logic);
 end component genRegister;
+\n
 """
     return result
 
@@ -236,13 +254,14 @@ Usage: python3.10 {__file__} <path to pattern file> <name of component> <number 
     signals.append(("patternOut", ceilToPow2(len(patterns))))
     reg_gen_result =  genRegisters(signal_usages, number_of_bytes)
     dec_gen_result = genDecoder(number_of_bytes)
+    and_gen_result = genAndGate(patterns, number_of_bytes)
 
     result += initBlock(name, len(patterns))
     result += genSignals()
-    result += "begin"
+    result += "begin\n"
     result += dec_gen_result
     result += reg_gen_result
-    result += genAndGate(patterns, number_of_bytes)
+    result += and_gen_result
     result += genEndBlock(name, len(patterns))
 
     with open(f"{name}.vhdl","w") as target_file:
