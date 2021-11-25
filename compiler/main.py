@@ -58,12 +58,14 @@ def genRegisters(signal_usages, number_of_bytes):
 
     result = ""
     for signal in signal_usages:
+        signal_depth = len(signal_usages[signal])
+        signal = str(ord(signal))
         for offset in range(number_of_bytes):
-            signal_depth = len(signal_usages[signal])
             for signal_level in range(signal_depth):
                 signal_level += offset
                 if signal_level < number_of_bytes:
                     continue;
+
 
                 temp_reg = regNameTemplate(signal, signal_level)
                 temp_signal = signalTemplate(signal,signal_level)
@@ -73,7 +75,7 @@ def genRegisters(signal_usages, number_of_bytes):
 
                 signals.append((temp_signal,1))
 
-                input_signal = f"decOut_internal({ord(signal)+256*(number_of_bytes-signal_level%number_of_bytes -1)})"\
+                input_signal = f"decOut_internal({int(signal)+256*(number_of_bytes-signal_level%number_of_bytes -1)})"\
                         if signal_level < number_of_bytes*2 \
                         else signalTemplate(signal,signal_level-number_of_bytes)
                 result += f"""
@@ -90,16 +92,17 @@ def genRegisters(signal_usages, number_of_bytes):
 def genAndGate(patterns,number_of_bytes):
     result = ""
     for (pattern_number, pattern) in enumerate(patterns):
-        pattern = pattern.strip()
+        pattern = pattern.replace("\n","")
         if number_of_bytes != 1:
             signals.append((f"{pattern}_and_signals",number_of_bytes))
         for offset in range(number_of_bytes):
             signals_to_and = []
-            for (index,char) in enumerate(pattern.strip()[::-1]):
+            for (index,char) in enumerate(pattern.replace("\n","")[::-1]):
                 index += offset
                 if index < number_of_bytes:
                     signals_to_and.append(f"decOut_internal({ord(char) + 256*index})")
                 else:
+                    char = str(ord(char))
                     signals_to_and.append(signalTemplate(char, index))
 
 
@@ -198,7 +201,7 @@ def parsePatterns(patterns):
 
     # Find with char is used at each index
     for (line_index,line) in enumerate(patterns):
-        for (char_index,char) in enumerate(line.strip()[::-1]):
+        for (char_index,char) in enumerate(line.replace("\n","")[::-1]):
             if char == '\n':
                 continue
             if not char in char_usaged:
