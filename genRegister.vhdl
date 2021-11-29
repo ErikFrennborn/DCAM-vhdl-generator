@@ -2,8 +2,9 @@ library ieee;
 use ieee.std_logic_1164.all;
 
 entity genRegister is
- port(d: in std_logic;
-      q: out std_logic;
+ generic(n: integer := 1);
+ port(d: in std_logic_vector(n-1 downto 0);
+      q: out std_logic_vector(n-1 downto 0);
       clk: in std_logic);
 end entity genRegister;
 
