@@ -1,5 +1,6 @@
-#!/bin/python3
-# usage: python3 main.py <path to pattern file>
+#!/bin/python3.10
+# THIS SCRIPT USES python3.10 FEATURES!
+# usage: python3.10 main.py <path to pattern file>
 import sys
 import patternCompiler as pattern
 # TODO: Handle fan out
@@ -13,7 +14,7 @@ def main(argv):
 
     if len(argv) < 3:
         print(f"""Incorrect number of arguments
-Usage: python3 {__file__} <path to pattern file> <name of component> <number of bytes per cycle>""")
+Usage: python3.10 {__file__} <path to pattern file> <name of component> <number of bytes per cycle>""")
         exit()
 
     name = argv[1]

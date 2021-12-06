@@ -2,7 +2,7 @@ from math import log2, ceil
 
 # Global
 ## [(name, data width)]
-signals = []
+signals = {}
 registers = set()
 
 # General helperfunction
@@ -11,12 +11,13 @@ def ceilToPow2(number):
 
 # Helperfunctions for naming
 def regNameTemplate(signal,signal_level):
-    return f"{signal}_Reg_{signal_level}"
+    return f"Reg_{signal}_{signal_level}"
 
 def signalTemplate(signal, signal_level):
-    # Hack
-    signal_depth = list(filter(lambda x: signal in x[0], signals))[0]
-    if signal_depth[1] == 1:
+    # Hack, slow pls fix
+    signal_depth = signals[f"sig_{signal}_Reg"]
+    #  signal_depth = list(filter(lambda x: signal in x[0], signals))[0]
+    if signal_depth == 1:
         return f"sig_{signal}_Reg"
     else:
         return f"sig_{signal}_Reg({signal_level-1})"
@@ -26,7 +27,8 @@ def signalTemplate(signal, signal_level):
 ## Uses global signals and creates vhdl need to define them
 def genSignals():
     result = ""
-    for (signal,width) in signals:
+    for signal in signals:
+        width = signals[signal]
         result += f"signal {signal}: "
         if width == 1:
             result += "std_logic;\n"
@@ -38,17 +40,42 @@ def genSignals():
 ## Handles logic around the decoder(s), will get more complex when
 ## handling more the one byte per cycle
 def genDecoder(number_of_bytes):
-    signals.append(("decOut_internal",256*number_of_bytes))
+    signals["decOut_internal"] = 256*number_of_bytes
     result =""
     for i in range(number_of_bytes):
         inverse = number_of_bytes - i
         result += f"""
 decComp{i}: genDecoder
-port map(decIn => inComp({8*(inverse)-1} downto {8*(inverse-1)}),
+  port map(decIn => inComp({8*(inverse)-1} downto {8*(inverse-1)}),
     clk => clk,
-    decOut => decOut_internal({256*(inverse)-1} downto {256*(inverse-1)}));
+    decOut => decOut_internal({256*(i+1)-1} downto {256*i}));
 """
     return result
+
+def getNeedWidthPerLevel(signal_usage, fanout):
+    need_width = 1
+    max_fanout_at_level = 1
+    need_width_at_last_level = 0
+    width_at_level = []
+    for level in range(len(signal_usage))[::-1]:
+        max_fanout_at_level *= fanout
+        need_fanout_at_level = len(signal_usage[level]) + need_width_at_last_level
+        if (need_fanout_at_level > fanout):
+            need_width_at_last_level = ceil(need_fanout_at_level/fanout)
+
+        width_at_level.append(need_fanout_at_level)
+        print(level,need_fanout_at_level, max_fanout_at_level, need_width)
+
+    return width_at_level
+
+def getMaxWidth(signal_usage,fanout):
+    widthest = 0
+    for level in range(len(signal_usage)):
+        width_at_level = getNeedWidthPerLevel(signal_usage, level, fanout)
+        print(level, width_at_level)
+        if widthest < width_at_level:
+            widthest = width_at_level
+    return widthest
 
 ## Genera vhdl for a single "network" register. Handles creation of
 ## output signal and mapping in input signal (include edge case
@@ -59,7 +86,7 @@ def genRegisters(signal_usages, number_of_bytes):
         signal_depth = len(signal_usages[signal])
         signal = str(ord(signal))
         if signal_depth > 1:
-            signals.append((f"sig_{signal}_Reg",signal_depth-1))
+            signals[f"sig_{signal}_Reg"]= signal_depth-1
         for offset in range(number_of_bytes):
             for signal_level in range(signal_depth):
                 signal_level += offset
@@ -72,8 +99,7 @@ def genRegisters(signal_usages, number_of_bytes):
                 if temp_reg in registers:
                     continue
                 registers.add(temp_reg)
-
-                input_signal = f"decOut_internal({int(signal)+256*(number_of_bytes-signal_level%number_of_bytes)})"\
+                input_signal = f"decOut_internal({int(signal)+256*((number_of_bytes-signal_level)%number_of_bytes)})"\
                         if signal_level < number_of_bytes*2 \
                         else signalTemplate(signal,signal_level-number_of_bytes)
                 result += f"""
@@ -84,6 +110,7 @@ def genRegisters(signal_usages, number_of_bytes):
 """
     return result
 
+
 ## Creates the AND logic to implement the pattern. This will get
 ## more complex when handling more the one byte per cycle as
 ## we then needs to find the pattern in all the offsets.
@@ -92,13 +119,13 @@ def genAndGate(patterns,number_of_bytes):
     for (pattern_number, pattern) in enumerate(patterns):
         pattern = pattern.replace("\n","")
         if number_of_bytes != 1:
-            signals.append((f"{pattern_number}_and_signals",number_of_bytes))
+            signals[f"sig_{pattern_number}_and_signals"] = number_of_bytes
         for offset in range(number_of_bytes):
             signals_to_and = []
             for (index,char) in enumerate(pattern.replace("\n","")[::-1]):
                 index += offset
                 if index < number_of_bytes:
-                    signals_to_and.append(f"decOut_internal({ord(char) + 256*(number_of_bytes-index%number_of_bytes - 1)})")
+                    signals_to_and.append(f"decOut_internal({ord(char) + 256*((number_of_bytes-index)%number_of_bytes)})")
                 else:
                     char = str(ord(char))
                     signals_to_and.append(signalTemplate(char, index))
@@ -108,9 +135,9 @@ def genAndGate(patterns,number_of_bytes):
             if number_of_bytes == 1:
                 result += f"patternOut({pattern_number}) <= " +  partial_pattern + ";\n\n"
             else:
-                result += f"{pattern_number}_and_signals({offset}) <= " + partial_pattern + ";\n"
+                result += f"sig_{pattern_number}_and_signals({offset}) <= " + partial_pattern + ";\n"
         if number_of_bytes != 1:
-            result += f"patternOut({pattern_number}) <= or_reduce({pattern_number}_and_signals);\n\n"
+            result += f"patternOut({pattern_number}) <= or_reduce(sig_{pattern_number}_and_signals);\n\n"
     return result
 
 ## Creates the initial block, mostly just defines.
@@ -150,7 +177,7 @@ component genEncoder is
 end component genEncoder;
 
 component genRegister is
- port(d: in std_logic;
+  port(d: in std_logic;
       q: out std_logic;
       clk: in std_logic);
 end component genRegister;
@@ -165,11 +192,21 @@ end component genRegister;
 def genEndBlock(name, number_of_patterns):
     number_of_patterns_pow2 = ceilToPow2(number_of_patterns)
 
+    #  Must be done other we have unassigned signal and vhdl breaks
+    match number_of_patterns_pow2 - number_of_patterns:
+        case 0:
+            patternOut_workaround = ""
+        case 1:
+            patternOut_workaround = f"patternOut({number_of_patterns}) <= '0';\n"
+        case _:
+            patternOut_workaround = f'patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns -1}) <= "00";\n'
+
     if number_of_patterns > 2:
-        output_width = f"ceil(log2(number_of_patterns_pow2)"
+        output_width = f"{ceil(log2(number_of_patterns_pow2))}"
     else:
         output_width = "1"
     result = f"""
+{patternOut_workaround}
 encComp: genEncoder
 generic map(inWidth => {number_of_patterns_pow2},
           outWidth => {output_width})
@@ -177,7 +214,7 @@ generic map(inWidth => {number_of_patterns_pow2},
       encOut => outComp);
 """
     if number_of_patterns >= 2:
-        result += "isValid <= or_reduce(patternOut);"
+        result += f"isValid <= or_reduce(patternOut({number_of_patterns -1} downto 0));"
     else:
         result += "isValid <= patternOut;"
 
@@ -226,23 +263,23 @@ def main(patterns, name, number_of_bytes):
     # Gets data from file
 
     signal_usages = parsePatterns(patterns)
-
+    number_of_patterns = len(patterns)
 
     # Must be run before genSignals as we only know what signals
     # we need after this stage is down
-    signals.append(("patternOut", len(patterns)))
+    signals["patternOut"] = ceilToPow2(number_of_patterns)
     reg_gen_result = genRegisters(signal_usages, number_of_bytes)
     dec_gen_result = genDecoder(number_of_bytes)
     and_gen_result = genAndGate(patterns, number_of_bytes)
 
-    result += initBlock(name, len(patterns), number_of_bytes)
+    result += initBlock(name, number_of_patterns, number_of_bytes)
     result += genSignals()
     result += "begin\n"
     result += dec_gen_result
     result += reg_gen_result
     result += and_gen_result
-    result += genEndBlock(name, len(patterns))
-    print(result)
+    result += genEndBlock(name, number_of_patterns)
+    #  print(result)
 
     with open(f"{name}.vhdl","w") as target_file:
         target_file.write(result)
