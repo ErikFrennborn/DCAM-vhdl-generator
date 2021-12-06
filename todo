@@ -1,0 +1,4 @@
+pipeline decoder
+pipeline and
+add fifo to reduce burst of 64 B to n B
+make sure compontent can read and write to external correctly
