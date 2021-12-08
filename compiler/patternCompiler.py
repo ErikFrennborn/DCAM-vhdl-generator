@@ -15,12 +15,7 @@ def regNameTemplate(signal,signal_level):
 
 def signalTemplate(signal, signal_level):
     # Hack, slow pls fix
-    signal_depth = signals[f"sig_{signal}_Reg"]
-    #  signal_depth = list(filter(lambda x: signal in x[0], signals))[0]
-    if signal_depth == 1:
-        return f"sig_{signal}_Reg"
-    else:
-        return f"sig_{signal}_Reg({signal_level-1})"
+    return f"sig_{signal}_Reg({signal_level-1})"
 
 
 # Functions for generating submodules
@@ -29,11 +24,7 @@ def genSignals():
     result = ""
     for signal in signals:
         width = signals[signal]
-        result += f"signal {signal}: "
-        if width == 1:
-            result += "std_logic;\n"
-        else:
-            result += f"std_logic_vector({width-1} downto 0);\n"
+        result += f"signal {signal}: std_logic_vector({width-1} downto 0);\n"
     return result
 
 
@@ -133,10 +124,15 @@ def genAndGate(patterns,number_of_bytes):
 
             # pipelines and logic
             number_of_signals = len(signals_to_and[0])
+            if number_of_signals == 1:
+                result += f"patternOut({pattern_number}) <= {signals_to_and[0][0]};\n\n"
+                continue
+
             NUMBER_OF_INPUTS_PER_LUTS = 6
             and_tree_depth = ceil(log(number_of_signals, NUMBER_OF_INPUTS_PER_LUTS))
             and_tree_width = ceil(number_of_signals/NUMBER_OF_INPUTS_PER_LUTS)
             signals[f"and_tree_{pattern_number}"] = and_tree_depth*and_tree_width
+            signals[f"and_tree_{pattern_number}_internal"] = and_tree_depth*and_tree_width
             for and_level in range(and_tree_depth):
                 signals_to_and.append([])
                 for and_width in range(and_tree_width):
@@ -149,10 +145,12 @@ def genAndGate(patterns,number_of_bytes):
                     if len(temp) == 0:
                         break
                     in_signal = " AND ".join(temp)
+                    intermediate_signal = f"and_tree_{pattern_number}_internal({and_tree_width*and_level+ and_width})"
                     out_signal = f"and_tree_{pattern_number}({and_tree_width*and_level+ and_width})"
                     result += f"""
+{intermediate_signal} <= {in_signal};
 and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
-  port map(d => {in_signal},
+  port map(d => {intermediate_signal},
            clk => clk,
            q => {out_signal});\n
 """
@@ -166,7 +164,6 @@ and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
                 result += f"sig_{pattern_number}_and_signals({offset}) <= " + partial_pattern + ";\n"
         if number_of_bytes != 1:
             result += f"patternOut({pattern_number}) <= or_reduce(sig_{pattern_number}_and_signals);\n\n"
-    print(result)
     return result
 
 ## Creates the initial block, mostly just defines.
@@ -206,8 +203,9 @@ component genEncoder is
 end component genEncoder;
 
 component genRegister is
-  port(d: in std_logic;
-      q: out std_logic;
+  generic(n: integer := 1);
+  port(d: in std_logic_vector(n-1 downto 0);
+      q: out std_logic_vector(n-1 downto 0);
       clk: in std_logic);
 end component genRegister;
 \n
@@ -222,13 +220,10 @@ def genEndBlock(name, number_of_patterns):
     number_of_patterns_pow2 = ceilToPow2(number_of_patterns)
 
     #  Must be done other we have unassigned signal and vhdl breaks
-    match number_of_patterns_pow2 - number_of_patterns:
-        case 0:
-            patternOut_workaround = ""
-        case 1:
-            patternOut_workaround = f"patternOut({number_of_patterns}) <= '0';\n"
-        case _:
-            patternOut_workaround = f'patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns -1}) <= "00";\n'
+    if (number_of_patterns_pow2 - number_of_patterns == 0):
+        patternOut_workaround = ""
+    else:
+        patternOut_workaround = f"patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns -1}) <= (others => '0');\n"
 
     if number_of_patterns > 2:
         output_width = f"{ceil(log2(number_of_patterns_pow2))}"
@@ -248,7 +243,7 @@ generic map(inWidth => {number_of_patterns_pow2},
         result += "isValid <= patternOut;"
 
 
-    result += f"end {name}_arch;"
+    result += f"\nend {name}_arch;"
     return result
 
 
