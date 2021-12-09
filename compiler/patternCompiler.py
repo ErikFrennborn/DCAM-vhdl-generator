@@ -15,7 +15,7 @@ def regNameTemplate(signal,signal_level):
 
 def signalTemplate(signal, signal_level):
     # Hack, slow pls fix
-    return f"sig_{signal}_Reg({signal_level-1})"
+    return f"sig_{signal}_Reg({signal_level-1} downto {signal_level - 1})"
 
 
 # Functions for generating submodules
@@ -90,7 +90,8 @@ def genRegisters(signal_usages, number_of_bytes):
                 if temp_reg in registers:
                     continue
                 registers.add(temp_reg)
-                input_signal = f"decOut_internal({int(signal)+256*((number_of_bytes-signal_level)%number_of_bytes)})"\
+                signal_temp = int(signal)+256*((number_of_bytes-signal_level)%number_of_bytes)
+                input_signal = f"decOut_internal({signal_temp} downto {signal_temp})"\
                         if signal_level < number_of_bytes*2 \
                         else signalTemplate(signal,signal_level-number_of_bytes)
                 result += f"""
@@ -117,7 +118,8 @@ def genAndGate(patterns,number_of_bytes):
                 index += offset
                 if index < number_of_bytes:
                     #  signals_to_and.append(f"decOut_internal({ord(char) + 256*((number_of_bytes-index)%number_of_bytes)})")
-                    signals_to_and[0].append(f"decOut_internal({ord(char) + 256*(number_of_bytes-index%number_of_bytes - 1)})")
+                    temp_signal_index = ord(char) + 256*(number_of_bytes-index%number_of_bytes - 1)
+                    signals_to_and[0].append(f"decOut_internal({temp_signal_index} downto {temp_signal_index})")
                 else:
                     char = str(ord(char))
                     signals_to_and[0].append(signalTemplate(char, index))
@@ -125,7 +127,7 @@ def genAndGate(patterns,number_of_bytes):
             # pipelines and logic
             number_of_signals = len(signals_to_and[0])
             if number_of_signals == 1:
-                result += f"patternOut({pattern_number}) <= {signals_to_and[0][0]};\n\n"
+                result += f"patternOut({pattern_number} downto {pattern_number}) <= {signals_to_and[0][0]};\n\n"
                 continue
 
             NUMBER_OF_INPUTS_PER_LUTS = 6
@@ -145,8 +147,10 @@ def genAndGate(patterns,number_of_bytes):
                     if len(temp) == 0:
                         break
                     in_signal = " AND ".join(temp)
-                    intermediate_signal = f"and_tree_{pattern_number}_internal({and_tree_width*and_level+ and_width})"
-                    out_signal = f"and_tree_{pattern_number}({and_tree_width*and_level+ and_width})"
+                    temp_signal_index = and_tree_width*and_level+ and_width
+                    intermediate_signal = f"and_tree_{pattern_number}_internal({temp_signal_index} downto {temp_signal_index})"
+                    temp_signal_index = and_tree_width*and_level+ and_width
+                    out_signal = f"and_tree_{pattern_number}({temp_signal_index} downto {temp_signal_index})"
                     result += f"""
 {intermediate_signal} <= {in_signal};
 and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
@@ -159,11 +163,11 @@ and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
 
             partial_pattern = signals_to_and[-1:][0][0]
             if number_of_bytes == 1:
-                result += f"patternOut({pattern_number}) <= " +  partial_pattern + ";\n\n"
+                result += f"patternOut({pattern_number} downto {pattern_number}) <= " +  partial_pattern + ";\n\n"
             else:
                 result += f"sig_{pattern_number}_and_signals({offset}) <= " + partial_pattern + ";\n"
         if number_of_bytes != 1:
-            result += f"patternOut({pattern_number}) <= or_reduce(sig_{pattern_number}_and_signals);\n\n"
+            result += f"patternOut({pattern_number} downto {pattern_number}) <= or_reduce(sig_{pattern_number}_and_signals);\n\n"
     return result
 
 ## Creates the initial block, mostly just defines.
@@ -223,7 +227,7 @@ def genEndBlock(name, number_of_patterns):
     if (number_of_patterns_pow2 - number_of_patterns == 0):
         patternOut_workaround = ""
     else:
-        patternOut_workaround = f"patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns }) <= (others => '0');\n"
+        patternOut_workaround = f"patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns}) <= (others => '0');\n"
 
     if number_of_patterns > 2:
         output_width = f"{ceil(log2(number_of_patterns_pow2))}"
