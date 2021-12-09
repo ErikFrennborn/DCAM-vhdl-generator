@@ -223,7 +223,7 @@ def genEndBlock(name, number_of_patterns):
     if (number_of_patterns_pow2 - number_of_patterns == 0):
         patternOut_workaround = ""
     else:
-        patternOut_workaround = f"patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns -1}) <= (others => '0');\n"
+        patternOut_workaround = f"patternOut({number_of_patterns_pow2 -1} downto {number_of_patterns }) <= (others => '0');\n"
 
     if number_of_patterns > 2:
         output_width = f"{ceil(log2(number_of_patterns_pow2))}"
