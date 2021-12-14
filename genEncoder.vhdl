@@ -23,7 +23,7 @@ for i in encFuncIn'range loop
     return std_logic_vector(to_unsigned(i, outWidth));
  end if;
 end loop;
-return "00";
+return (others => '0');
 end function encFunc;
 
 begin
