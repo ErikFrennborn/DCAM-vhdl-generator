@@ -127,14 +127,17 @@ def genAndGate(patterns,number_of_bytes):
             # pipelines and logic
             number_of_signals = len(signals_to_and[0])
             if number_of_signals == 1:
-                result += f"patternOut({pattern_number} downto {pattern_number}) <= {signals_to_and[0][0]};\n\n"
+                if number_of_bytes == 1:
+                    result += f"patternOut({pattern_number} downto {pattern_number}) <= {signals_to_and[0][0]};\n\n"
+                else:
+                    result += f"sig_{pattern_number}_and_signals({offset} downto {offset}) <= {signals_to_and[0][0]};\n\n"
                 continue
 
             NUMBER_OF_INPUTS_PER_LUTS = 6
             and_tree_depth = ceil(log(number_of_signals, NUMBER_OF_INPUTS_PER_LUTS))
             and_tree_width = ceil(number_of_signals/NUMBER_OF_INPUTS_PER_LUTS)
-            signals[f"and_tree_{pattern_number}"] = and_tree_depth*and_tree_width
-            signals[f"and_tree_{pattern_number}_internal"] = and_tree_depth*and_tree_width
+            signals[f"and_tree_{pattern_number}_{offset}"] = and_tree_depth*and_tree_width
+            signals[f"and_tree_{pattern_number}_internal_{offset}"] = and_tree_depth*and_tree_width
             for and_level in range(and_tree_depth):
                 signals_to_and.append([])
                 for and_width in range(and_tree_width):
@@ -148,12 +151,12 @@ def genAndGate(patterns,number_of_bytes):
                         break
                     in_signal = " AND ".join(temp)
                     temp_signal_index = and_tree_width*and_level+ and_width
-                    intermediate_signal = f"and_tree_{pattern_number}_internal({temp_signal_index} downto {temp_signal_index})"
+                    intermediate_signal = f"and_tree_{pattern_number}_internal_{offset}({temp_signal_index} downto {temp_signal_index})"
                     temp_signal_index = and_tree_width*and_level+ and_width
-                    out_signal = f"and_tree_{pattern_number}({temp_signal_index} downto {temp_signal_index})"
+                    out_signal = f"and_tree_{pattern_number}_{offset}({temp_signal_index} downto {temp_signal_index})"
                     result += f"""
 {intermediate_signal} <= {in_signal};
-and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
+and_reg_{pattern_number}_{and_level*and_tree_width+and_width}_{offset}: genRegister
   port map(d => {intermediate_signal},
            clk => clk,
            q => {out_signal});\n
@@ -165,9 +168,10 @@ and_reg_{pattern_number}_{and_level*and_tree_width+and_width}: genRegister
             if number_of_bytes == 1:
                 result += f"patternOut({pattern_number} downto {pattern_number}) <= " +  partial_pattern + ";\n\n"
             else:
-                result += f"sig_{pattern_number}_and_signals({offset}) <= " + partial_pattern + ";\n"
+                result += f"sig_{pattern_number}_and_signals({offset} downto {offset}) <= " + partial_pattern + ";\n"
         if number_of_bytes != 1:
-            result += f"patternOut({pattern_number} downto {pattern_number}) <= or_reduce(sig_{pattern_number}_and_signals);\n\n"
+            temp = [f"sig_{pattern_number}_and_signals({i} downto {i})" for i in range(number_of_bytes)]
+            result += f"patternOut({pattern_number} downto {pattern_number}) <= {' OR '.join(temp)};\n\n"
     return result
 
 ## Creates the initial block, mostly just defines.
@@ -242,7 +246,8 @@ generic map(inWidth => {number_of_patterns_pow2},
       encOut => outComp);
 """
     if number_of_patterns >= 2:
-        result += f"isValid <= or_reduce(patternOut({number_of_patterns -1} downto 0));"
+        temp = [f"patternOut( {i} downto {i}))" for i in range(number_of_patterns )]
+        result += f"isValid <= {' OR '.join(temp)};"
     else:
         result += "isValid <= patternOut;"
 
