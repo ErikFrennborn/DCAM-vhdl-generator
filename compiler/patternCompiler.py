@@ -203,9 +203,8 @@ component genEncoder is
 end component genEncoder;
 
 component genRegister is
-  generic(n: integer := 1);
-  port(d: in std_logic_vector(n-1 downto 0);
-      q: out std_logic_vector(n-1 downto 0);
+  port(d: in std_logic;
+      q: out std_logic;
       clk: in std_logic);
 end component genRegister;
 \n
