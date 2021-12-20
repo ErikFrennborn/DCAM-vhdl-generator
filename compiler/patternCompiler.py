@@ -77,7 +77,7 @@ def genRegisters(signal_usages, number_of_bytes):
         signal_depth = len(signal_usages[signal])
         signal = str(ord(signal))
         if signal_depth > 1:
-            signals[f"sig_{signal}_Reg"]= signal_depth-1
+            signals[f"sig_{signal}_Reg"]= signal_depth-1 + number_of_bytes
         for offset in range(number_of_bytes):
             for signal_level in range(signal_depth):
                 signal_level += offset
@@ -246,8 +246,7 @@ generic map(inWidth => {number_of_patterns_pow2},
       encOut => outComp);
 """
     if number_of_patterns >= 2:
-        temp = [f"patternOut( {i} downto {i}))" for i in range(number_of_patterns )]
-        result += f"isValid <= {' OR '.join(temp)};"
+        result += f"isValid <= or_reduce(patternOut);"
     else:
         result += "isValid <= patternOut;"
 
